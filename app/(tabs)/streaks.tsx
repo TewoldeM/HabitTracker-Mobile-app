@@ -10,7 +10,6 @@ export default function StreaksScreen() {
     return (
 <View style={styles.container}>
       <Text style={styles.title} variant="headlineSmall">
-        {" "}
         Habit Streaks
       </Text>
             
