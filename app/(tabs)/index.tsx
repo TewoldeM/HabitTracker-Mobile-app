@@ -138,15 +138,37 @@ export default function Index() {
                 swipeableRefs.current[habit.$id]?.close();
               }}
             >
-              <Surface>
+              <Surface
+                style={[
+                  styles.card,
+                  isHabitCompleted(habit.$id) && styles.cardCompleted,
+                ]}
+                elevation={0}
+              >
                 <View style={styles.cardContent}>
                   <Text style={styles.cardTitle}> {habit.title}</Text>
                   <Text style={styles.cardDescription}>
+                    {" "}
                     {habit.description}
                   </Text>
                   <View style={styles.cardFooter}>
-                    <View style={styles.streakBadge}></View>
-                    <View style={styles.frequencyBadge}></View>
+                    <View style={styles.streakBadge}>
+                      <MaterialCommunityIcons
+                        name="fire"
+                        size={18}
+                        color={"#ff9800"}
+                      />
+                      <Text style={styles.streakText}>
+                        {habit.streak_count} day streak
+                      </Text>
+                    </View>
+                    <View style={styles.frequencyBadge}>
+                      <Text style={styles.frequencyText}>
+                        {" "}
+                        {habit.frequency.charAt(0).toUpperCase() +
+                          habit.frequency.slice(1)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </Surface>
