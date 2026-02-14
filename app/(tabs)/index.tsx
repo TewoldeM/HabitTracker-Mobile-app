@@ -16,25 +16,86 @@ import { Swipeable } from "react-native-gesture-handler";
 import { Button, Surface, Text } from "react-native-paper";
 
 export default function Index() {
-   const { signOut, user } = useAuth();
-   const [habits, setHabits] = useState<Habit[]>();
-   const [completedHabits, setCompletedHabits] = useState<string[]>();
+  const { signOut, user } = useAuth();
+  const [habits, setHabits] = useState<Habit[]>();
+  const [completedHabits, setCompletedHabits] = useState<string[]>();
+
+  const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
   useEffect(() => {
     fetchHabits();
   }, [user]);
   const fetchHabits = async () =>
   {
       try {
-        const response = await databases.listDocuments(
+        const response = await databases.listDocuments<Habit>(
           DATABASE_ID,
           HABITS_COLLECTION_ID,
           [Query.equal("user_id", user?.$id ?? "")],
         );
-        setHabits(response.documents as unknown as Habit[]);
+        setHabits(response.documents as Habit[] );
+      } catch (error) {
+        console.error(error);
+      }
+  };
+    const handleDeleteHabit = async (id: string) => {
+      try {
+        await databases.deleteDocument(DATABASE_ID, HABITS_COLLECTION_ID, id);
       } catch (error) {
         console.error(error);
       }
     };
+
+    const handleCompleteHabit = async (id: string) => {
+      if (!user || completedHabits?.includes(id)) return;
+      try {
+        const currentDate = new Date().toISOString();
+        await databases.createDocument(
+          DATABASE_ID,
+          COMPLETIONS_COLLECTION_ID,
+          ID.unique(),
+          {
+            habit_id: id,
+            user_id: user.$id,
+            completed_at: currentDate,
+          },
+        );
+
+        const habit = habits?.find((h) => h.$id === id);
+        if (!habit) return;
+
+        await databases.updateDocument(DATABASE_ID, HABITS_COLLECTION_ID, id, {
+          streak_count: habit.streak_count + 1,
+          last_completed: currentDate,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    const isHabitCompleted = (habitId: string) =>
+      completedHabits?.includes(habitId);
+
+    const renderRightActions = (habitId: string) => (
+      <View style={styles.swipeActionRight}>
+        {isHabitCompleted(habitId) ? (
+          <Text style={{ color: "#fff" }}> Completed!</Text>
+        ) : (
+          <MaterialCommunityIcons
+            name="check-circle-outline"
+            size={32}
+            color={"#fff"}
+          />
+        )}
+      </View>
+    );
+    const renderLeftActions = () => (
+      <View style={styles.swipeActionLeft}>
+        <MaterialCommunityIcons
+          name="trash-can-outline"
+          size={32}
+          color={"#fff"}
+        />
+      </View>
+    );
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -46,6 +107,53 @@ export default function Index() {
           Sign Out
         </Button>
       </View>
+
+      <ScrollView>
+        {habits?.length === 0 ? (
+          <View style={styles.emptyState}>
+            {" "}
+            <Text style={styles.emptyStateText}>
+              {" "}
+              No Habits yet. Add your first Habit!
+            </Text>
+          </View>
+        ) : (
+          habits?.map((habit, key) => (
+            <Swipeable
+              ref={(ref) => {
+                swipeableRefs.current[habit.$id] = ref;
+              }}
+              key={key}
+              overshootLeft={false}
+              overshootRight={false}
+              renderLeftActions={renderLeftActions}
+              renderRightActions={() => renderRightActions(habit.$id)}
+              onSwipeableOpen={(direction) => {
+                if (direction === "left") {
+                  handleDeleteHabit(habit.$id);
+                } else if (direction === "right") {
+                  handleCompleteHabit(habit.$id);
+                }
+
+                swipeableRefs.current[habit.$id]?.close();
+              }}
+            >
+              <Surface>
+                <View style={styles.cardContent}>
+                  <Text style={styles.cardTitle}> {habit.title}</Text>
+                  <Text style={styles.cardDescription}>
+                    {habit.description}
+                  </Text>
+                  <View style={styles.cardFooter}>
+                    <View style={styles.streakBadge}></View>
+                    <View style={styles.frequencyBadge}></View>
+                  </View>
+                </View>
+              </Surface>
+            </Swipeable>
+          ))
+        )}
+      </ScrollView>
     </View>
   );
 }
