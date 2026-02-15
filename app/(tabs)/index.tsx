@@ -22,80 +22,146 @@ export default function Index() {
 
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
   useEffect(() => {
-    fetchHabits();
+    if (user) {
+      //  “Notify me whenever any habit document changes.”
+      const habitsChannel = `databases.${DATABASE_ID}.collections.${HABITS_COLLECTION_ID}.documents`;
+      // “Whenever something happens to habits, run this function.”
+      const habitsSubscription = client.subscribe(
+        habitsChannel,
+        (response: RealtimeResponse) => {
+          if (
+            response.events.includes(
+              "databases.*.collections.*.documents.*.create",
+            )
+          ) {
+            fetchHabits();
+          } else if (
+            response.events.includes(
+              "databases.*.collections.*.documents.*.update",
+            )
+          ) {
+            fetchHabits();
+          } else if (
+            response.events.includes(
+              "databases.*.collections.*.documents.*.delete",
+            )
+          ) {
+            fetchHabits();
+          }
+        },
+      );
+      const completionsChannel = `databases.${DATABASE_ID}.collections.${COMPLETIONS_COLLECTION_ID}.documents`;
+      const completionsSubscription = client.subscribe(
+        completionsChannel,
+        (response: RealtimeResponse) => {
+          if (
+            response.events.includes(
+              "databases.*.collections.*.documents.*.create",
+            )
+          ) {
+            fetchTodayCompletions();
+          }
+        },
+      );
+
+      fetchHabits();
+      fetchTodayCompletions();
+      return () => {
+        habitsSubscription();
+        completionsSubscription();
+      };
+    }
   }, [user]);
-  const fetchHabits = async () =>
-  {
-      try {
-        const response = await databases.listDocuments<Habit>(
-          DATABASE_ID,
-          HABITS_COLLECTION_ID,
-          [Query.equal("user_id", user?.$id ?? "")],
-        );
-        setHabits(response.documents as Habit[] );
-      } catch (error) {
-        console.error(error);
-      }
+
+  const fetchTodayCompletions = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const response = await databases.listDocuments<HabitCompletion>(
+        DATABASE_ID,
+        COMPLETIONS_COLLECTION_ID,
+        [
+          Query.equal("user_id", user?.$id ?? ""),
+          Query.greaterThan("completed_at", today.toISOString()),
+        ],
+      );
+      const completions = response.documents as HabitCompletion[];
+      setCompletedHabits(completions.map((c) => c.habit_id));
+    } catch (error) {
+      console.log(error);
+    }
   };
-    const handleDeleteHabit = async (id: string) => {
-      try {
-        await databases.deleteDocument(DATABASE_ID, HABITS_COLLECTION_ID, id);
-      } catch (error) {
-        console.error(error);
-      }
-    };
+  const fetchHabits = async () => {
+    try {
+      const response = await databases.listDocuments<Habit>(
+        DATABASE_ID,
+        HABITS_COLLECTION_ID,
+        [Query.equal("user_id", user?.$id ?? "")],
+      );
+      setHabits(response.documents as Habit[]);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  const handleDeleteHabit = async (id: string) => {
+    try {
+      await databases.deleteDocument(DATABASE_ID, HABITS_COLLECTION_ID, id);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
-    const handleCompleteHabit = async (id: string) => {
-      if (!user || completedHabits?.includes(id)) return;
-      try {
-        const currentDate = new Date().toISOString();
-        await databases.createDocument(
-          DATABASE_ID,
-          COMPLETIONS_COLLECTION_ID,
-          ID.unique(),
-          {
-            habit_id: id,
-            user_id: user.$id,
-            completed_at: currentDate,
-          },
-        );
+  const handleCompleteHabit = async (id: string) => {
+    if (!user || completedHabits?.includes(id)) return;
+    try {
+      const currentDate = new Date().toISOString();
+      await databases.createDocument(
+        DATABASE_ID,
+        COMPLETIONS_COLLECTION_ID,
+        ID.unique(),
+        {
+          habit_id: id,
+          user_id: user.$id,
+          completed_at: currentDate,
+        },
+      );
 
-        const habit = habits?.find((h) => h.$id === id);
-        if (!habit) return;
+      const habit = habits?.find((h) => h.$id === id);
+      if (!habit) return;
 
-        await databases.updateDocument(DATABASE_ID, HABITS_COLLECTION_ID, id, {
-          streak_count: habit.streak_count + 1,
-          last_completed: currentDate,
-        });
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    const isHabitCompleted = (habitId: string) =>
-      completedHabits?.includes(habitId);
+      await databases.updateDocument(DATABASE_ID, HABITS_COLLECTION_ID, id, {
+        streak_count: habit.streak_count + 1,
+        last_completed: currentDate,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  const isHabitCompleted = (habitId: string) =>
+    completedHabits?.includes(habitId);
 
-    const renderRightActions = (habitId: string) => (
-      <View style={styles.swipeActionRight}>
-        {isHabitCompleted(habitId) ? (
-          <Text style={{ color: "#fff" }}> Completed!</Text>
-        ) : (
-          <MaterialCommunityIcons
-            name="check-circle-outline"
-            size={32}
-            color={"#fff"}
-          />
-        )}
-      </View>
-    );
-    const renderLeftActions = () => (
-      <View style={styles.swipeActionLeft}>
+  const renderRightActions = (habitId: string) => (
+    <View style={styles.swipeActionRight}>
+      {isHabitCompleted(habitId) ? (
+        <Text style={{ color: "#fff" }}> Completed!</Text>
+      ) : (
         <MaterialCommunityIcons
-          name="trash-can-outline"
+          name="check-circle-outline"
           size={32}
           color={"#fff"}
         />
-      </View>
-    );
+      )}
+    </View>
+  );
+  const renderLeftActions = () => (
+    <View style={styles.swipeActionLeft}>
+      <MaterialCommunityIcons
+        name="trash-can-outline"
+        size={32}
+        color={"#fff"}
+      />
+    </View>
+  );
   return (
     <View style={styles.container}>
       <View style={styles.header}>
